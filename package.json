@@ -1,0 +1,17 @@
+{
+    "name": "kimcard-monorepo",
+    "private": true,
+    "workspaces": [
+        "packages/*"
+    ],
+    "scripts": {
+        "dev:demo": "npm run dev --workspace=@kimcard/demo"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "devDependencies": {
+        "typescript": "^5.2.2",
+        "vite": "^5.0.0"
+    }
+}
