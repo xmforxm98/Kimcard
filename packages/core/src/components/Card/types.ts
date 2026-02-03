@@ -36,7 +36,7 @@ export interface LayerPoseProps extends LayerProps {
 }
 
 export interface LayerEffectsProps extends LayerProps {
-    type: 'sheen' | 'hologram' | 'none';
+    type: 'sheen' | 'hologram' | 'burning' | 'none';
     intensity?: number;
     color?: string;
 }

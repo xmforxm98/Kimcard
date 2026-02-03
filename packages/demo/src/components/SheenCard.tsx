@@ -1,119 +1,245 @@
-import { useRef, useState, useMemo } from 'react'
+import { useRef, useState, useMemo, Suspense } from 'react'
 import { Canvas, useFrame, useLoader } from '@react-three/fiber'
 import { motion } from 'framer-motion'
 import * as THREE from 'three'
 import { TextureLoader } from 'three'
 
-// Vertex Shader - Standard UV mapping
+const cardBgUrl = '/tarot-card-bg.png'
+const cardCharUrl = '/demon-taro-card.png'
+const cardFrameUrl = '/frame.png'
+
+// Vertex Shader
 const vertexShader = `
   varying vec2 vUv;
-  
   void main() {
     vUv = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `
 
-// Fragment Shader - Holographic Sheen Effect
+export type FireSize = 'xs' | 's' | 'm' | 'l' | 'xl';
+
+const fireSizeMap = {
+    xs: { range: 0.04, falloff: 50.0, intensity: 0.8, pDensity: 0.18, pSize: 1.0, pIntensity: 100.0 },
+    s: { range: 0.08, falloff: 35.0, intensity: 1.0, pDensity: 0.14, pSize: 1.3, pIntensity: 250.0 },
+    m: { range: 0.15, falloff: 22.0, intensity: 1.2, pDensity: 0.10, pSize: 1.8, pIntensity: 500.0 },
+    l: { range: 0.25, falloff: 14.0, intensity: 1.5, pDensity: 0.06, pSize: 2.5, pIntensity: 1000.0 },
+    xl: { range: 0.45, falloff: 9.0, intensity: 1.8, pDensity: 0.02, pSize: 3.8, pIntensity: 2500.0 },
+};
+
+// Fragment Shader - ULTRA RARE Inferno Effect (Layered with Top Frame)
 const fragmentShader = `
-  uniform sampler2D uTexture;
+  uniform sampler2D uBackground;
+  uniform sampler2D uCharacter;
+  uniform sampler2D uFrame;
   uniform float uTime;
   uniform float uHover;
+  uniform vec2 uMouse;
+  uniform float uFireRange;
+  uniform float uGlowFalloff;
+  uniform float uFireIntensity;
+  uniform float uParticleDensity;
+  uniform float uParticleSize;
+  uniform float uParticleIntensity;
   varying vec2 vUv;
   
-  // HSL to RGB conversion for rainbow effect
-  vec3 hsl2rgb(float h, float s, float l) {
-    vec3 rgb = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
-    return l + s * (rgb - 0.5) * (1.0 - abs(2.0 * l - 1.0));
+  float snoise(vec2 v) {
+    vec4 C = vec4(0.211324865, 0.366025403, -0.577350269, 0.024390243);
+    vec2 i  = floor(v + dot(v, C.yy));
+    vec2 x0 = v - i + dot(i, C.xx);
+    vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    vec4 x12 = x0.xyxy + C.xxzz;
+    x12.xy -= i1;
+    vec3 p = mod(vec3(i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ), 289.0);
+    p = mod(((p*34.0)+1.0)*p, 289.0);
+    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+    m = m*m; m = m*m;
+    vec3 x = 2.0 * fract(p * C.www) - 1.0;
+    vec3 h = abs(x) - 0.5;
+    vec3 ox = floor(x + 0.5);
+    vec3 a0 = x - ox;
+    m *= 1.792842914 - 0.85373472 * ( a0*a0 + h*h );
+    vec3 g;
+    g.x = a0.x * x0.x + h.x * x0.y;
+    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+    return 130.0 * dot(m, g);
   }
-  
+
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 3; i++) {
+      v += a * snoise(p);
+      p = p * 2.1;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  float sdRoundedRect(vec2 p, vec2 b, float r) {
+    vec2 q = abs(p) - b + vec2(r);
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+  }
+
   void main() {
-    vec4 texColor = texture2D(uTexture, vUv);
+    float time = uTime * 1.5;
+    float hover = uHover;
+    vec2 mouse = uMouse * hover;
     
-    // Base sheen parameters
-    float speed = 0.4 + uHover * 0.6; // Speed increases on hover
-    float intensity = 0.3 + uHover * 0.4; // Intensity increases on hover
+    vec2 p = (vUv - 0.5) * 1.25; 
+    vec2 cardUv = p + 0.5;
     
-    // Create diagonal sheen line (45 degree angle)
-    float diagonal = (vUv.x + vUv.y) * 0.5;
+    // Noise for all effects
+    float noise = fbm(cardUv * 3.0 + vec2(0.0, -time * 0.4));
     
-    // Animate the sheen position
-    float sheenPos = fract(uTime * speed);
+    // 1. Layer: Background (Parallax + Heat Distortion)
+    vec2 bgParallax = mouse * 0.02;
+    float bgDistortAmt = fbm(cardUv * 4.0 + vec2(0.0, -time * 0.8)) * 0.03 * hover;
+    vec2 bgUv = cardUv + bgParallax + bgDistortAmt;
+    float bgInBounds = step(0.0, bgUv.x) * step(bgUv.x, 1.0) * step(0.0, bgUv.y) * step(bgUv.y, 1.0);
+    vec4 bgCol = texture2D(uBackground, bgUv) * bgInBounds;
+    bgCol.rgb *= 0.6 + 0.4 * (1.0 - hover);
     
-    // Create sharp sheen band with soft edges
-    float sheenWidth = 0.15;
-    float dist = abs(diagonal - sheenPos);
-    float wrappedDist = min(dist, 1.0 - dist); // Handle wrapping
-    float sheen = smoothstep(sheenWidth, 0.0, wrappedDist);
+    // 2. Card SDF (Core Boundary)
+    float sdf = sdRoundedRect(p * 2.15, vec2(1.0), 0.12); 
+    float cardMask = smoothstep(0.02, -0.02, sdf);
     
-    // Create rainbow/holographic color based on position and time
-    float hue = fract(diagonal * 2.0 + uTime * 0.1);
-    vec3 rainbowColor = hsl2rgb(hue, 0.8, 0.6);
+    // 3. Layer: Character (Out-of-Frame + Subtle Border Fire)
+    vec2 charParallax = mouse * -0.08;
+    vec2 charUv = cardUv + charParallax;
+    float charInBounds = step(0.0, charUv.x) * step(charUv.x, 1.0) * step(0.0, charUv.y) * step(charUv.y, 1.0);
+    vec4 charCol = texture2D(uCharacter, charUv) * charInBounds;
     
-    // Secondary sheen for more complexity (opposite direction)
-    float diagonal2 = (vUv.x - vUv.y + 1.0) * 0.5;
-    float sheenPos2 = fract(uTime * speed * 0.7 + 0.5);
-    float dist2 = abs(diagonal2 - sheenPos2);
-    float wrappedDist2 = min(dist2, 1.0 - dist2);
-    float sheen2 = smoothstep(sheenWidth * 0.7, 0.0, wrappedDist2) * 0.5;
+    // Shadow for depth
+    vec2 shadowUv = charUv + vec2(0.02, 0.02);
+    float shadowInBounds = step(0.0, shadowUv.x) * step(shadowUv.x, 1.0) * step(0.0, shadowUv.y) * step(shadowUv.y, 1.0);
+    float shadowStr = texture2D(uCharacter, shadowUv).a * shadowInBounds;
+    bgCol.rgb = mix(bgCol.rgb, bgCol.rgb * 0.1, shadowStr * charCol.a * 0.75 * hover);
     
-    // Combine sheens with rainbow colors
-    vec3 sheenColor = rainbowColor * sheen * intensity;
-    vec3 sheenColor2 = hsl2rgb(fract(hue + 0.5), 0.7, 0.5) * sheen2 * intensity;
+    // 4. Flame Logic (Main Border)
+    float fireNoise = fbm(p * 2.8 + vec2(0.0, -time * 1.5));
+    float fireIntensity = smoothstep(uFireRange, -uFireRange * 0.7, abs(sdf) - fireNoise * 0.18 * (0.5 + hover));
     
-    // Subtle base iridescence
-    float iridescence = sin(vUv.x * 20.0 + vUv.y * 20.0 + uTime) * 0.03;
-    vec3 iridColor = hsl2rgb(fract(vUv.x + vUv.y + uTime * 0.05), 0.5, 0.5) * iridescence;
+    vec3 firePink = vec3(1.0, 0.0, 0.4);
+    vec3 fireRed = vec3(1.0, 0.2, 0.1);
+    vec3 fireGold = vec3(1.0, 0.95, 0.3);
+    vec3 fireColor = mix(mix(fireRed, firePink, 0.5 + 0.5 * sin(time * 3.0 + p.x * 12.0)), fireGold, fireIntensity);
     
-    // Edge highlight
-    float edgeDist = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
-    float edgeGlow = smoothstep(0.1, 0.0, edgeDist) * 0.2 * uHover;
-    vec3 edgeColor = vec3(0.8, 0.9, 1.0) * edgeGlow;
+    // 5. SUBTLE Character Border Fire (As requested)
+    float edgeMask = smoothstep(0.1, 0.5, charCol.a) * (1.0 - smoothstep(0.5, 0.9, charCol.a));
+    float edgeNoise = fbm(charUv * 12.0 + vec2(0.0, -time * 1.5));
+    vec3 edgeFire = fireColor * edgeNoise * edgeMask * 0.35 * hover; 
+    charCol.rgb += edgeFire;
     
-    // Final color composition (additive blending)
-    vec3 finalColor = texColor.rgb + sheenColor + sheenColor2 + iridColor + edgeColor;
+    // Rim Lighting
+    float rim = pow(1.0 - charCol.a, 3.5) * fireIntensity * hover;
+    charCol.rgb += fireColor * rim * 0.5;
     
-    // Slight desaturation of base to make sheen pop more
-    float luminance = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
-    finalColor = mix(finalColor, vec3(luminance) + sheenColor + sheenColor2, 0.1);
+    // 6. Layer: Frame (Decorative Frame Texture with Border Blur)
+    vec4 frameCol = texture2D(uFrame, cardUv);
     
-    gl_FragColor = vec4(finalColor, texColor.a);
+    // Subtle blur for frame border lines (Soft focus glow)
+    vec4 frameBlur = (
+      texture2D(uFrame, cardUv + vec2(0.003, 0.0)) +
+      texture2D(uFrame, cardUv - vec2(0.003, 0.0)) +
+      texture2D(uFrame, cardUv + vec2(0.0, 0.003)) +
+      texture2D(uFrame, cardUv - vec2(0.0, 0.003))
+    ) * 0.25;
+    
+    vec3 frameFinal = mix(frameCol.rgb, frameCol.rgb + frameBlur.rgb * 0.6, hover);
+    
+    // Glow
+    float outerGlow = exp(-max(sdf, 0.0) * uGlowFalloff) * fireIntensity * (1.5 + hover * 2.0);
+    
+    // 7. Layer: Ember Particles (Categorized XS to XL)
+    // Wind-blown turbulence from Bottom-Left to Top-Right
+    vec2 baseDir = vec2(-1.0, -1.0);
+    float turbulence = snoise(cardUv * 0.5 + time * 0.2);
+    vec2 windOffset = baseDir + vec2(sin(time + turbulence), cos(time * 0.8)) * 0.2;
+    
+    // Use uParticleSize for larger/smaller particles
+    vec2 partUv1 = cardUv * (1.2 / uParticleSize) + (time * 0.4 * windOffset);
+    vec2 partUv2 = cardUv * (2.5 / uParticleSize) + (time * 0.6 * windOffset);
+    
+    float n1 = fbm(partUv1 * 5.0);
+    float n2 = fbm(partUv2 * 10.0);
+    
+    // Combinatory noise for high-entropy sparks
+    float sparkNoise = pow(n1, 2.0) * n2;
+    float sparks = pow(max(0.0, sparkNoise - uParticleDensity), 3.0) * uParticleIntensity;
+    
+    // Organic flickering and color jitter
+    float jitter = snoise(vec2(time * 15.0, cardUv.y * 100.0));
+    float flash = smoothstep(0.4, 0.9, snoise(partUv1 * 3.0 + time));
+    
+    vec3 emberColor = mix(fireRed, fireGold, flash);
+    
+    // Vertical Fade: Particles burn out as they go up
+    float verticalFade = smoothstep(0.9, 0.1, cardUv.y);
+    vec3 emberLayer = emberColor * sparks * (0.5 + 0.5 * jitter) * hover * verticalFade;
+    
+    // Composite
+    vec3 bgAndFire = bgCol.rgb * cardMask + (fireColor * fireIntensity * uFireIntensity + fireColor * outerGlow * 0.7);
+    
+    // Blend: BG/Fire -> Character -> Frame -> Embers (Additive Bloom)
+    vec3 composite = mix(bgAndFire, charCol.rgb, charCol.a);
+    composite = mix(composite, frameFinal, frameCol.a * cardMask);
+    
+    // Final high-intensity embers
+    composite += emberLayer;
+    
+    float finalAlpha = max(cardMask, max(charCol.a, clamp(fireIntensity + outerGlow, 0.0, 1.0)));
+    
+    gl_FragColor = vec4(composite, finalAlpha);
   }
 `
 
-// Shader Plane Component
-function ShaderPlane({ hovered }: { hovered: boolean }) {
-    const meshRef = useRef<THREE.Mesh>(null)
+function ShaderPlane({
+    hovered,
+    mousePos,
+    fireSize = 'm',
+}: {
+    hovered: boolean
+    mousePos: { x: number, y: number }
+    fireSize?: FireSize
+}) {
     const materialRef = useRef<THREE.ShaderMaterial>(null)
+    const background = useLoader(TextureLoader, cardBgUrl)
+    const character = useLoader(TextureLoader, cardCharUrl)
+    const frame = useLoader(TextureLoader, cardFrameUrl)
 
-    // Load placeholder texture
-    const texture = useLoader(
-        TextureLoader,
-        'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=512&h=768&fit=crop'
-    )
+    const params = fireSizeMap[fireSize];
 
-    // Shader uniforms
     const uniforms = useMemo(() => ({
-        uTexture: { value: texture },
+        uBackground: { value: background },
+        uCharacter: { value: character },
+        uFrame: { value: frame },
         uTime: { value: 0 },
         uHover: { value: 0 },
-    }), [texture])
+        uMouse: { value: new THREE.Vector2(0, 0) },
+        uFireRange: { value: params.range },
+        uGlowFalloff: { value: params.falloff },
+        uFireIntensity: { value: params.intensity },
+        uParticleDensity: { value: params.pDensity },
+        uParticleSize: { value: params.pSize },
+        uParticleIntensity: { value: params.pIntensity },
+    }), [background, character, frame, params])
 
-    // Animation loop
     useFrame((state) => {
         if (materialRef.current) {
             materialRef.current.uniforms.uTime.value = state.clock.elapsedTime
-            // Smooth hover transition
             const targetHover = hovered ? 1 : 0
-            materialRef.current.uniforms.uHover.value +=
-                (targetHover - materialRef.current.uniforms.uHover.value) * 0.1
+            materialRef.current.uniforms.uHover.value += (targetHover - materialRef.current.uniforms.uHover.value) * 0.1
+
+            // Interpolate mouse position for smoothness
+            materialRef.current.uniforms.uMouse.value.x += (mousePos.x - materialRef.current.uniforms.uMouse.value.x) * 0.1
+            materialRef.current.uniforms.uMouse.value.y += (mousePos.y - materialRef.current.uniforms.uMouse.value.y) * 0.1
         }
     })
 
     return (
-        <mesh ref={meshRef}>
-            {/* Card aspect ratio 2:3 */}
-            <planeGeometry args={[2, 3]} />
+        <mesh>
+            <planeGeometry args={[2.5, 3.75]} />
             <shaderMaterial
                 ref={materialRef}
                 vertexShader={vertexShader}
@@ -125,8 +251,11 @@ function ShaderPlane({ hovered }: { hovered: boolean }) {
     )
 }
 
-// Main SheenCard Component
-export default function SheenCard() {
+interface SheenCardProps {
+    fireSize?: FireSize;
+}
+
+export default function SheenCard({ fireSize = 'm' }: SheenCardProps) {
     const [hovered, setHovered] = useState(false)
     const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
 
@@ -139,73 +268,40 @@ export default function SheenCard() {
 
     return (
         <motion.div
-            className="relative cursor-pointer"
-            style={{
-                width: 280,
-                height: 420,
-                perspective: 1000,
-            }}
+            className="relative cursor-pointer group"
+            style={{ width: 320, height: 480, perspective: perspectiveValue }}
             onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => {
-                setHovered(false)
-                setMousePos({ x: 0, y: 0 })
-            }}
+            onMouseLeave={() => { setHovered(false); setMousePos({ x: 0, y: 0 }) }}
             onMouseMove={handleMouseMove}
         >
             <motion.div
-                className="w-full h-full rounded-xl overflow-hidden shadow-2xl"
+                className="w-full h-full rounded-2xl relative z-10"
                 style={{
-                    background: 'linear-gradient(145deg, #2a2a40, #1a1a2e)',
-                    boxShadow: hovered
-                        ? '0 25px 50px -12px rgba(139, 92, 246, 0.35), 0 0 60px rgba(139, 92, 246, 0.2)'
-                        : '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                    background: 'transparent',
                 }}
-                animate={{
-                    rotateY: mousePos.x * 15,
-                    rotateX: -mousePos.y * 15,
-                    scale: hovered ? 1.05 : 1,
-                }}
-                transition={{
-                    type: 'spring',
-                    stiffness: 300,
-                    damping: 30,
-                }}
+                animate={{ rotateY: mousePos.x * 20, rotateX: -mousePos.y * 20, scale: hovered ? 1.05 : 1 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 25 }}
             >
-                {/* Card border glow */}
-                <div
-                    className="absolute inset-0 rounded-xl pointer-events-none"
-                    style={{
-                        background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.3))',
-                        opacity: hovered ? 1 : 0,
-                        transition: 'opacity 0.3s ease',
-                    }}
-                />
+                <div className="absolute inset-[-100px] z-0 pointer-events-none">
+                    <Canvas dpr={[1, 2]} camera={{ position: [0, 0, 3.8], fov: 50 }}>
+                        <Suspense fallback={null}>
+                            <ShaderPlane hovered={hovered} mousePos={mousePos} fireSize={fireSize} />
+                        </Suspense>
+                    </Canvas>
+                </div>
 
-                {/* WebGL Canvas */}
-                <Canvas
-                    dpr={[1, 2]}
-                    camera={{ position: [0, 0, 2.5], fov: 50 }}
-                    style={{
-                        borderRadius: '0.75rem',
-                    }}
-                >
-                    <ShaderPlane hovered={hovered} />
-                </Canvas>
-
-                {/* Overlay reflection effect */}
-                <div
-                    className="absolute inset-0 pointer-events-none rounded-xl"
-                    style={{
-                        background: `radial-gradient(
-              circle at ${50 + mousePos.x * 100}% ${50 + mousePos.y * 100}%, 
-              rgba(255, 255, 255, 0.15) 0%, 
-              transparent 50%
-            )`,
-                        opacity: hovered ? 1 : 0,
-                        transition: 'opacity 0.3s ease',
-                    }}
-                />
+                <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none z-10">
+                    <div
+                        className="absolute inset-0 transition-opacity duration-300 pointer-events-none"
+                        style={{
+                            opacity: hovered ? 0.35 : 0.1,
+                            background: `linear-gradient(${135 + mousePos.x * 20}deg, rgba(255,255,255,0.2) 0%, transparent 50%, rgba(255,100,200,0.1) 100%)`
+                        }}
+                    />
+                </div>
             </motion.div>
         </motion.div>
     )
 }
+
+const perspectiveValue = 1000;

@@ -4,30 +4,30 @@ import {
     LayerCharacter,
     LayerVFX,
     LayerAdvancedVFX,
-    LayerEffects
 } from '@kimcard/core';
 import { ElementType } from '@kimcard/core/src/components/Card/themes';
+import SheenCard from './components/SheenCard';
 
-// Assets
+// Assets - Fixed with high-quality working URLs
 const ASSETS = {
     fire: 'https://images.unsplash.com/photo-1635322966219-b75ed372eb01?w=500&fit=crop&q=80',
-    ice: 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=500&fit=crop&q=80',
-    volt: 'https://images.unsplash.com/photo-1534293630113-6d09e3a0937c?w=500&fit=crop&q=80',
-    earth: 'https://images.unsplash.com/photo-1600189261867-30e5ffe7b8da?w=500&fit=crop&q=80',
-    void: 'https://images.unsplash.com/photo-1614728853913-1e222cc66122?w=500&fit=crop&q=80',
+    ice: 'https://images.unsplash.com/photo-1518176258769-f227c798150e?w=500&fit=crop&q=80',
+    volt: 'https://images.unsplash.com/photo-1493238792040-e7141f0f0c3c?w=500&fit=crop&q=80',
+    earth: 'https://images.unsplash.com/photo-1542601906990-b4d3fb773b09?w=500&fit=crop&q=80',
+    void: 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=500&fit=crop&q=80',
 };
 
 // Ultra Rare Assets
 const ULTRA_ASSETS = {
     lightning: {
-        bg: 'https://images.unsplash.com/photo-1504194569500-1c0993950b32?w=600&q=80', // Dark Storm
-        char: 'https://images.unsplash.com/photo-1598556851229-373678082989?w=600&fit=crop&q=80', // Dark Figure
-        color: '#67e8f9' // Cyan
+        bg: 'https://images.unsplash.com/photo-1504194569500-1c0993950b32?w=600&q=80',
+        char: 'https://images.unsplash.com/photo-1500322969630-a26ab67a1ad9?w=600&fit=crop&q=80', // Lightning figure
+        color: '#67e8f9'
     },
     aura: {
-        bg: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?w=600&q=80', // Golden
-        char: 'https://images.unsplash.com/photo-1531384441138-2736e62e0919?w=600&fit=crop&q=80', // Goddess like
-        color: '#fcd34d' // Gold
+        bg: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?w=600&q=80',
+        char: 'https://images.unsplash.com/photo-1531384441138-2736e62e0919?w=600&fit=crop&q=80',
+        color: '#fcd34d'
     }
 };
 
@@ -43,10 +43,20 @@ function App() {
                     PROTOTYPE: ULTRA RARE
                 </h2>
 
-                <div className="flex flex-col md:flex-row gap-16 perspective-[2000px]">
+                <div className="flex flex-col md:flex-row gap-16 perspective-[2000px] items-center justify-center">
+
+                    {/* New Fire Effect Card */}
+                    <div className="group relative">
+                        <SheenCard />
+                        <div className="absolute -bottom-16 w-full text-center pointer-events-none z-30">
+                            <h3 className="text-orange-500 text-2xl font-bold drop-shadow-[0_0_10px_rgba(255,100,0,0.8)]" style={{ fontFamily: 'Cinzel' }}>
+                                INFERNO DEMON
+                            </h3>
+                        </div>
+                    </div>
 
                     {/* 1. LIGHTNING STORM (Torturess Style) */}
-                    <div className="group relative">
+                    <div className="group relative opacity-50 scale-90 hover:opacity-100 hover:scale-100 transition-all duration-500">
                         <CardContainer width={320} height={500} element="ice">
                             <LayerBackground type="image" src={ULTRA_ASSETS.lightning.bg} />
                             <LayerCharacter src={ULTRA_ASSETS.lightning.char} scale={1.2} />
@@ -55,21 +65,6 @@ function App() {
                             <div className="absolute bottom-8 w-full text-center pointer-events-none z-30">
                                 <h3 className="text-cyan-300 text-2xl font-bold drop-shadow-[0_0_10px_rgba(34,211,238,0.8)]" style={{ fontFamily: 'Orbitron' }}>
                                     THUNDER LORD
-                                </h3>
-                            </div>
-                        </CardContainer>
-                    </div>
-
-                    {/* 2. GOLDEN SPIRIT (Oriental Fantasy) */}
-                    <div className="group relative">
-                        <CardContainer width={320} height={500} element="fire">
-                            <LayerBackground type="image" src={ULTRA_ASSETS.aura.bg} />
-                            <LayerCharacter src={ULTRA_ASSETS.aura.char} scale={1.1} offsetY={10} />
-                            <LayerAdvancedVFX type="aura" color="#fbbf24" intensity={1.5} />
-
-                            <div className="absolute bottom-8 w-full text-center pointer-events-none z-30">
-                                <h3 className="text-amber-300 text-2xl font-bold drop-shadow-[0_0_10px_rgba(251,191,36,0.8)]" style={{ fontFamily: 'Cinzel' }}>
-                                    GOLDEN SOUL
                                 </h3>
                             </div>
                         </CardContainer>
@@ -95,7 +90,15 @@ function App() {
                                 className="mix-blend-lighten"
                             />
                             <LayerVFX element={el} />
-                            <LayerEffects type="sheen" intensity={0.4} />
+
+                            {/* Replaced WebGL Sheen with a lighter CSS one for stability */}
+                            <div className="absolute inset-0 opacity-0 group-hover:opacity-30 transition-opacity duration-500 pointer-events-none"
+                                style={{
+                                    background: 'linear-gradient(135deg, transparent 0%, rgba(255,255,255,0.8) 50%, transparent 100%)',
+                                    backgroundSize: '200% 200%',
+                                    animation: 'sheen 3s infinite linear'
+                                }}
+                            />
 
                             <div className="absolute bottom-6 w-full text-center pointer-events-none z-30">
                                 <span className="text-white/80 font-bold uppercase tracking-[0.2em] text-xs" style={{ fontFamily: 'Orbitron' }}>
