@@ -20,11 +20,11 @@ const vertexShader = `
 export type FireSize = 'xs' | 's' | 'm' | 'l' | 'xl';
 
 const fireSizeMap = {
-    xs: { range: 0.04, falloff: 50.0, intensity: 0.8, pDensity: 0.18, pSize: 1.0, pIntensity: 100.0 },
-    s: { range: 0.08, falloff: 35.0, intensity: 1.0, pDensity: 0.14, pSize: 1.3, pIntensity: 250.0 },
-    m: { range: 0.15, falloff: 22.0, intensity: 1.2, pDensity: 0.10, pSize: 1.8, pIntensity: 500.0 },
-    l: { range: 0.25, falloff: 14.0, intensity: 1.5, pDensity: 0.06, pSize: 2.5, pIntensity: 1000.0 },
-    xl: { range: 0.45, falloff: 9.0, intensity: 1.8, pDensity: 0.02, pSize: 3.8, pIntensity: 2500.0 },
+    xs: { range: 0.04, falloff: 50.0, intensity: 0.8, pDensity: 0.18, pSize: 1.0, pIntensity: 100.0, fGlow: 0.5 },
+    s: { range: 0.08, falloff: 35.0, intensity: 1.0, pDensity: 0.14, pSize: 1.3, pIntensity: 250.0, fGlow: 1.2 },
+    m: { range: 0.15, falloff: 22.0, intensity: 1.2, pDensity: 0.10, pSize: 1.8, pIntensity: 500.0, fGlow: 2.2 },
+    l: { range: 0.25, falloff: 14.0, intensity: 1.5, pDensity: 0.06, pSize: 2.5, pIntensity: 1000.0, fGlow: 4.5 },
+    xl: { range: 0.45, falloff: 9.0, intensity: 1.8, pDensity: 0.02, pSize: 3.8, pIntensity: 2500.0, fGlow: 8.0 },
 };
 
 // Fragment Shader - ULTRA RARE Inferno Effect (Layered with Top Frame)
@@ -41,6 +41,7 @@ const fragmentShader = `
   uniform float uParticleDensity;
   uniform float uParticleSize;
   uniform float uParticleIntensity;
+  uniform float uFrameGlow;
   varying vec2 vUv;
   
   float snoise(vec2 v) {
@@ -135,18 +136,31 @@ const fragmentShader = `
     float rim = pow(1.0 - charCol.a, 3.5) * fireIntensity * hover;
     charCol.rgb += fireColor * rim * 0.5;
     
-    // 6. Layer: Frame (Decorative Frame Texture with Border Blur)
+    // 6. Layer: Frame (High-Intensity Border Glow)
     vec4 frameCol = texture2D(uFrame, cardUv);
     
-    // Subtle blur for frame border lines (Soft focus glow)
-    vec4 frameBlur = (
-      texture2D(uFrame, cardUv + vec2(0.003, 0.0)) +
-      texture2D(uFrame, cardUv - vec2(0.003, 0.0)) +
-      texture2D(uFrame, cardUv + vec2(0.0, 0.003)) +
-      texture2D(uFrame, cardUv - vec2(0.0, 0.003))
-    ) * 0.25;
+    // Multi-tap Bloom for intense line glow
+    float frameAlphaGlow = (
+      texture2D(uFrame, cardUv + vec2(0.006, 0.0)).a +
+      texture2D(uFrame, cardUv - vec2(0.006, 0.0)).a +
+      texture2D(uFrame, cardUv + vec2(0.0, 0.006)).a +
+      texture2D(uFrame, cardUv - vec2(0.0, 0.006)).a +
+      texture2D(uFrame, cardUv + vec2(0.004, 0.004)).a +
+      texture2D(uFrame, cardUv - vec2(0.004, 0.004)).a
+    ) * 0.166;
     
-    vec3 frameFinal = mix(frameCol.rgb, frameCol.rgb + frameBlur.rgb * 0.6, hover);
+    // Radial Gradient Frame Glow (Spreading from center)
+    float centerDist = length(p * vec2(1.0, 0.8)); // Adjusted for card aspect ratio
+    vec3 innerGlow = fireGold;
+    vec3 outerGlowColor = mix(fireRed, firePink, 0.4 + 0.3 * sin(time * 2.0));
+    vec3 gradColor = mix(innerGlow, outerGlowColor, smoothstep(0.1, 0.6, centerDist));
+    
+    // Fiery pulse effect for the frame
+    float framePulse = 0.85 + 0.15 * sin(time * 5.0);
+    vec3 fieryGlow = gradColor * frameAlphaGlow * uFrameGlow * framePulse * hover;
+    
+    // Combine frame texture with intense line glow
+    vec3 frameFinal = frameCol.rgb + fieryGlow;
     
     // Glow
     float outerGlow = exp(-max(sdf, 0.0) * uGlowFalloff) * fireIntensity * (1.5 + hover * 2.0);
@@ -223,6 +237,7 @@ function ShaderPlane({
         uParticleDensity: { value: params.pDensity },
         uParticleSize: { value: params.pSize },
         uParticleIntensity: { value: params.pIntensity },
+        uFrameGlow: { value: params.fGlow },
     }), [background, character, frame, params])
 
     useFrame((state) => {
