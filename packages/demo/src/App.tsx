@@ -7,6 +7,8 @@ import {
 } from '@kimcard/core';
 import { ElementType } from '@kimcard/core/src/components/Card/themes';
 import SheenCard from './components/SheenCard';
+import ElectricCard from './components/ElectricCard';
+import CloudCard from './components/CloudCard';
 
 // Assets - Fixed with high-quality working URLs
 const ASSETS = {
@@ -55,19 +57,24 @@ function App() {
                         </div>
                     </div>
 
-                    {/* 1. LIGHTNING STORM (Torturess Style) */}
-                    <div className="group relative opacity-50 scale-90 hover:opacity-100 hover:scale-100 transition-all duration-500">
-                        <CardContainer width={320} height={500} element="ice">
-                            <LayerBackground type="image" src={ULTRA_ASSETS.lightning.bg} />
-                            <LayerCharacter src={ULTRA_ASSETS.lightning.char} scale={1.2} />
-                            <LayerAdvancedVFX type="lightning" color="#22d3ee" intensity={1.5} />
+                    {/* New Electric Effect Card */}
+                    <div className="group relative">
+                        <ElectricCard frameScale={0.78} charScale={0.8} charOffset={{ x: 0, y: 0.12 }} frameLayering="back" showFrame={true} />
+                        <div className="absolute -bottom-16 w-full text-center pointer-events-none z-30">
+                            <h3 className="text-yellow-400 text-2xl font-bold drop-shadow-[0_0_15px_rgba(255,215,0,0.8)]" style={{ fontFamily: 'Orbitron' }}>
+                                KING ZEUS
+                            </h3>
+                        </div>
+                    </div>
 
-                            <div className="absolute bottom-8 w-full text-center pointer-events-none z-30">
-                                <h3 className="text-cyan-300 text-2xl font-bold drop-shadow-[0_0_10px_rgba(34,211,238,0.8)]" style={{ fontFamily: 'Orbitron' }}>
-                                    THUNDER LORD
-                                </h3>
-                            </div>
-                        </CardContainer>
+                    {/* New Cloud Effect Card (The World) */}
+                    <div className="group relative">
+                        <CloudCard frameScale={0.68} charScale={0.8} charOffset={{ x: 0, y: 0.1 }} frameLayering="front" showFrame={true} />
+                        <div className="absolute -bottom-16 w-full text-center pointer-events-none z-30">
+                            <h3 className="text-blue-100 text-2xl font-bold drop-shadow-[0_0_15px_rgba(200,230,255,0.8)]" style={{ fontFamily: 'Orbitron' }}>
+                                THE WORLD
+                            </h3>
+                        </div>
                     </div>
 
                 </div>
